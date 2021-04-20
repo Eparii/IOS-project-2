@@ -12,6 +12,7 @@
 				"-Wextra",
 				"-Werror",
 				"-pedantic",
+				"-pthread",
 				"${file}",
 				"-o",
 				"${fileDirname}/${fileBasenameNoExtension}"

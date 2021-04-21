@@ -45,7 +45,7 @@
 #define TR_MIN 0
 
 int *number = NULL, *e_waiting = NULL, *r_hitched = NULL, *e_helped = NULL, *r_back = NULL, *work_closed = NULL;
-sem_t *santa = NULL, *elves = NULL, *reindeers = NULL, *writing = NULL;
+sem_t *santa = NULL, *elves = NULL, *reindeers = NULL, *writing = NULL, *santa_helped = NULL, *reindeers_hitched = NULL, *elves_inc = NULL;
 FILE *file;
 
 //struktura na uložení parametrů
@@ -65,6 +65,12 @@ void clean()
     sem_unlink("xtetau00_sem_elves");
     sem_unlink("xtetau00_sem_reindeers");
     sem_unlink("xtetau00_sem_writing");
+    sem_unlink("xtetau00_sem_santa_helped");
+    sem_unlink("xtetau00_sem_reindeers_hitched");
+    sem_unlink("xtetau00_sem_elves_inc");
+    sem_destroy(elves_inc);
+    sem_destroy(reindeers_hitched);
+    sem_destroy(santa_helped);
     sem_destroy(writing);
     sem_destroy(reindeers);
     sem_destroy (elves);
@@ -201,7 +207,10 @@ int init_semaphores()
     elves = sem_open("xtetau00_sem_elves", O_CREAT | O_EXCL, 0666, 0);
     reindeers = sem_open("xtetau00_sem_reindeers", O_CREAT | O_EXCL, 0666, 0);
     writing = sem_open("xtetau00_sem_writing", O_CREAT | O_EXCL, 0666, 1);
-    if (santa == SEM_FAILED || elves == SEM_FAILED || reindeers == SEM_FAILED || writing == SEM_FAILED)
+    santa_helped = sem_open("xtetau00_sem_santa_helped", O_CREAT | O_EXCL, 0666, 0);
+    reindeers_hitched = sem_open("xtetau00_sem_reindeers_hitched", O_CREAT | O_EXCL, 0666, 0);
+    elves_inc = sem_open("xtetau00_sem_elves_inc", O_CREAT | O_EXCL, 0666, 1);
+    if (santa == SEM_FAILED || elves == SEM_FAILED || reindeers == SEM_FAILED || writing == SEM_FAILED || santa_helped == SEM_FAILED || reindeers_hitched == SEM_FAILED || elves_inc == SEM_FAILED)
     {
         return -1;
     }
@@ -227,6 +236,7 @@ void santa_message(int message)
         printf ("%d: Santa: Christmas started\n", (*number)++);
         break;
     }
+    fflush(file);
     sem_post(writing);
 
 }
@@ -250,6 +260,7 @@ void elf_message(int message, int elveid)
         printf ("%d: Elf %d: taking holidays\n", (*number)++, elveid);
         break;
     }
+    fflush(file);
     sem_post(writing);
 }
 
@@ -268,27 +279,31 @@ void reindeer_message(int message, int reindeerid)
         printf ("%d: RD %d: get hitched\n", (*number)++, reindeerid);
         break;
     }
+    fflush(file);
     sem_post(writing);
 }
 
 //funkce pro ovládání procesu santa
-void proc_santa()
+void proc_santa(int NR, int NE)
 {
     while(1)
     {
         santa_message(SLEEP);
+        if(*e_waiting >= 3) {sem_post(santa); }
         sem_wait(santa);
-        if (*work_closed == 1)
+        if ((*r_back) == NR)
         {
+            *work_closed = 1;
             santa_message(CLOSING);
-            for (int i = 0; i < *r_back; i++) { sem_post(reindeers); } //pustí všechny soby do fáze zapřáhnutí
-            sem_wait(santa); //čeká se, než zapřáhne všechny soby
+            for(int i = 0; i < NE; i++) { sem_post (elves); }; // všechny elfy z fronty pošle na prázdniny
+            for (int i = 0; i < NR; i++) { sem_post(reindeers); } //pustí všechny soby do fáze zapřáhnutí
+            sem_wait(reindeers_hitched); //čeká se, než zapřáhne všechny soby
             santa_message(CHRISTMAS);
             exit(0);
         }
         santa_message(HELP);
         for (int i = 0; i < 3; i++) { sem_post(elves); } //pustí 3 elfy do své dílny
-        sem_wait(santa); //čeká se, než pomůže všem elfům
+        sem_wait(santa_helped); //čeká se, než pomůže všem elfům
     }
 }
 
@@ -304,19 +319,25 @@ void proc_elves(int NE, int TE)
             while (1)
             {
                 srand(time(NULL) * getpid()); // seed funkce random
-                usleep((rand() % TE) * 1000); //usleep na náhodný čas mezi 0 a TE 
+                if (TE != 0)
+                {
+                    usleep((rand() % TE) * 1000); //usleep na náhodný čas mezi 0 a TE 
+                }
                 elf_message(NEED_HELP, i + 1);
-                if (*work_closed == 1) // pokud je dílna zavřená, elf odejde na dovolenou a ukončí proces
+                if (*work_closed == 1)
                 {
                     elf_message(HOLIDAYS, i+1);
                     exit(0);
                 }
+                sem_wait(elves_inc);
                 (*e_waiting)++;
                 if ((*e_waiting) >= 3) // pokud jsou ve frontě alespoň 3 elfové, probudi santu
                 {
-                    *e_waiting -= 3; // odečte 3 elfy z čekající fronty
                     sem_post(santa);
+                    *e_waiting -= 3;
+
                 }
+                sem_post(elves_inc);
                 sem_wait(elves); // elfové čekají, dokud nebudou 3, nebo nepřijde poslední sob
                 if (*work_closed == 1)
                 {
@@ -328,7 +349,7 @@ void proc_elves(int NE, int TE)
                 if (*e_helped == 3)
                 {
                     *e_helped = 0;
-                    sem_post(santa); // po pomoci všem 3 elfům v dílně jde santa spát (další smyčka cyklu)
+                    sem_post(santa_helped); // po pomoci všem 3 elfům v dílně jde santa spát (další smyčka cyklu)
                 }
             }   
         }
@@ -345,22 +366,23 @@ void proc_reindeers (int NR, int TR)
         if (id == 0)
         {
             srand(time(NULL) * getpid()); // seed funkce random
-            reindeer_message(RSTARTED, i + 1); 
-            usleep(((rand() % (TR)) + TR/2) * 1000 ); //usleep na náhodný čas mezi TR/2 a TR 
+            reindeer_message(RSTARTED, i + 1);
+            if (TR != 0)
+            { 
+                usleep(((rand() % (TR)) + TR/2) * 1000 ); //usleep na náhodný čas mezi TR/2 a TR 
+            }
             reindeer_message(RETURN, i + 1);
             (*r_back)++;
-            if (*r_back == NR)
+            if ((*r_back) == NR)
             {
-                *work_closed = 1;
                 sem_post(santa); //poslední sob probudí santu
             }
             sem_wait(reindeers); //  sobi čekají, dokud nebudou doma všichni
-            for(int j = 0; j < *e_waiting; j++) { sem_post (elves); };
             reindeer_message(HITCHED, i + 1); 
             (*r_hitched)++;
             if (*r_hitched == NR) // pokud jsou zapřáhnuti všichni sobi, začínají vánoce
             {
-                sem_post(santa); // pustí santu do "christmas started"
+                sem_post(reindeers_hitched); // pustí santu do "christmas started"
             }
             exit(0); // ukončí proces sob
         }
@@ -370,18 +392,18 @@ void proc_reindeers (int NR, int TR)
 
 int main(int argc, char* argv[])
 {
+    Params params = load_params(argc, argv); //načte parametry
+    open_file(); // otevře soubor
     if (init_semaphores() == -1) //inicializuje semafory, v případě chyby uvolňuje paměť a ukončuje program
     {
         error_exit(SEM_INIT_ERR);
     }
-    Params params = load_params(argc, argv); //načte parametry
-    open_file(); // otevře soubor
     map_variables(); // vytvoří sdílené proměnné
     init_variables(); // inicializuje sdílené proměnné
     pid_t id = fork(); // rozdělí proces na "santa" a "hlavní proces" 
     if (id == 0) 
     {
-        proc_santa(); // začne vykonávat proces santa
+        proc_santa(params.NR, params.NE); // začne vykonávat proces santa
     }
     else if (id == -1) { error_exit (FORK_ERR); }
     else

@@ -13,6 +13,8 @@
 #define PARAMS_ERR 1
 #define FILE_ERR 2
 #define MAP_ERR 3
+#define FORK_ERR 4
+#define SEM_INIT_ERR 5
 
 //definice zpráv sobů
 #define RSTARTED 1
@@ -55,6 +57,28 @@ typedef struct Params
     int TR;
 } Params;
 
+
+//funkce uvolňující sdílenou paměť, semafory a soubor
+void clean()
+{
+    sem_unlink("xtetau00_sem_santa");
+    sem_unlink("xtetau00_sem_elves");
+    sem_unlink("xtetau00_sem_reindeers");
+    sem_unlink("xtetau00_sem_writing");
+    sem_destroy(writing);
+    sem_destroy(reindeers);
+    sem_destroy (elves);
+    sem_destroy(santa);
+    munmap(number, sizeof(*(number)));
+    munmap(e_waiting, sizeof(*(e_waiting)));
+    munmap(e_helped, sizeof(*(e_helped)));
+    munmap(r_hitched, sizeof(*(r_hitched)));
+    munmap(r_back, sizeof(*(r_back)));
+    munmap(work_closed, sizeof(*(work_closed)));
+
+    if (file != NULL) { fclose (file); }
+}
+
 //funkce vypisující chybová hlášení, uvolňující paměť a ukončující běh programu
 void error_exit(int error_code)
 {
@@ -69,7 +93,18 @@ void error_exit(int error_code)
         exit (1);
         break;
     case MAP_ERR: // chyba v mapování paměti
-        fprintf(stderr, "Mapping memory failed");
+        fprintf(stderr, "Creating shared memory failed");
+        clean();
+        exit(1);
+        break;
+    case FORK_ERR:
+        fprintf(stderr, "Forking process failed");
+        clean();
+        exit(1);
+        break;
+    case SEM_INIT_ERR:
+        fprintf(stderr, "Semaphore initialization failed");
+        clean();
         exit(1);
         break;
     default:
@@ -80,7 +115,7 @@ void error_exit(int error_code)
 //pomocna funkce pro map_variables
 int* MMAP (int *pointer)
 {
-    pointer = mmap(NULL, sizeof(*(pointer)), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, 0, 0);
+    pointer = mmap(NULL, sizeof(*(pointer)), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     if (pointer == MAP_FAILED)
     {
         error_exit(MAP_ERR);
@@ -239,29 +274,25 @@ void reindeer_message(int message, int reindeerid)
 //funkce pro ovládání procesu santa
 void proc_santa()
 {
-    pid_t id = fork();
-    if (id == 0)
+    while(1)
     {
-        while(1)
+        santa_message(SLEEP);
+        sem_wait(santa);
+        if (*work_closed == 1)
         {
-            santa_message(SLEEP);
-            sem_wait(santa);
-            if (*work_closed == 1)
-            {
-                santa_message(CLOSING);
-                for (int i = 0; i < *r_back; i++) { sem_post(reindeers); } //pustí všechny soby do fáze zapřáhnutí
-                sem_wait(santa); //čeká se, než zapřáhne všechny soby
-                santa_message(CHRISTMAS);
-                exit(0);
-            }
-            santa_message(HELP);
-            for (int i = 0; i < 3; i++) { sem_post(elves); } //pustí 3 elfy do své dílny
-            sem_wait(santa); //čeká se, než pomůže všem elfům
+            santa_message(CLOSING);
+            for (int i = 0; i < *r_back; i++) { sem_post(reindeers); } //pustí všechny soby do fáze zapřáhnutí
+            sem_wait(santa); //čeká se, než zapřáhne všechny soby
+            santa_message(CHRISTMAS);
+            exit(0);
         }
+        santa_message(HELP);
+        for (int i = 0; i < 3; i++) { sem_post(elves); } //pustí 3 elfy do své dílny
+        sem_wait(santa); //čeká se, než pomůže všem elfům
     }
 }
 
-//funkce na ovládání procesu elfů
+//funkce na ovládání procesů elfů
 void proc_elves(int NE, int TE)
 {
     for (int i = 0; i < NE; i++)
@@ -301,9 +332,11 @@ void proc_elves(int NE, int TE)
                 }
             }   
         }
+        else if (id == -1) { error_exit (FORK_ERR); }
     }
 }
 
+//funkce na ovládání procesů sobů
 void proc_reindeers (int NR, int TR)
 {
     for (int i = 0; i < NR; i++)
@@ -331,43 +364,26 @@ void proc_reindeers (int NR, int TR)
             }
             exit(0); // ukončí proces sob
         }
-    }
-}
-
-//funkce uvolňující sdílenou paměť, semafory a soubor
-void clean()
-{
-    sem_unlink("xtetau00_sem_santa");
-    sem_unlink("xtetau00_sem_elves");
-    sem_unlink("xtetau00_sem_reindeers");
-    sem_unlink("xtetau00_sem_writing");
-    sem_destroy(writing);
-    sem_destroy(reindeers);
-    sem_destroy (elves);
-    sem_destroy(santa);
-    if (file != NULL)
-    {
-        fclose (file);
+        else if (id == -1) { error_exit (FORK_ERR); }
     }
 }
 
 int main(int argc, char* argv[])
 {
-    //jen pro debug, smazat potom
-    if (init_semaphores() == -1)
+    if (init_semaphores() == -1) //inicializuje semafory, v případě chyby uvolňuje paměť a ukončuje program
     {
-        clean();
-        return -1;
+        error_exit(SEM_INIT_ERR);
     }
     Params params = load_params(argc, argv); //načte parametry
     open_file(); // otevře soubor
-    map_variables(); // vytvoří sdílené proměnnou
+    map_variables(); // vytvoří sdílené proměnné
     init_variables(); // inicializuje sdílené proměnné
     pid_t id = fork(); // rozdělí proces na "santa" a "hlavní proces" 
     if (id == 0) 
     {
         proc_santa(); // začne vykonávat proces santa
     }
+    else if (id == -1) { error_exit (FORK_ERR); }
     else
     {
         pid_t id2 = fork(); // rozdělí hlavní proces na "elfové" a "hlavní proces"
@@ -375,6 +391,7 @@ int main(int argc, char* argv[])
         {
             proc_elves(params.NE, params.TE); // začne vykonávat NE procesů skřítků
         }
+        else if (id2 == -1) { error_exit (FORK_ERR); }
         else
         {
             pid_t id3 = fork(); // rozdělí hlavní proces na "sobi" a "hlavní proces" 
@@ -382,6 +399,7 @@ int main(int argc, char* argv[])
             {
                 proc_reindeers(params.NR, params.TR); // začně vykonávat NR procesů skřítků
             }
+            else if (id == -1) { error_exit (FORK_ERR); }
         }
         while (wait (NULL)) // čeká na ukončení všech child procesů
         {

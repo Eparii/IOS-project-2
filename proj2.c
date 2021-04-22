@@ -224,16 +224,16 @@ void santa_message(int message)
     switch (message)
     {
     case SLEEP:
-        printf("%d: Santa: going to sleep\n", (*number)++);
+        fprintf(file, "%d: Santa: going to sleep\n", (*number)++);
         break;
     case HELP:
-        printf("%d: Santa: helping elves\n", (*number)++);
+        fprintf(file, "%d: Santa: helping elves\n", (*number)++);
         break;
     case CLOSING:
-        printf ("%d: Santa: closing workshop\n", (*number)++);
+        fprintf (file, "%d: Santa: closing workshop\n", (*number)++);
         break;
     case CHRISTMAS:
-        printf ("%d: Santa: Christmas started\n", (*number)++);
+        fprintf (file, "%d: Santa: Christmas started\n", (*number)++);
         break;
     }
     fflush(file);
@@ -248,16 +248,16 @@ void elf_message(int message, int elveid)
     switch (message)
     {
     case STARTED:
-        printf ("%d: Elf %d: started \n", (*number)++, elveid);
+        fprintf (file, "%d: Elf %d: started \n", (*number)++, elveid);
         break;
     case NEED_HELP:
-        printf ("%d: Elf %d: need help\n", (*number)++, elveid);
+        fprintf (file, "%d: Elf %d: need help\n", (*number)++, elveid);
         break;
     case GET_HELP:
-        printf ("%d: Elf %d: get help\n", (*number)++, elveid);
+        fprintf (file, "%d: Elf %d: get help\n", (*number)++, elveid);
         break;
     case HOLIDAYS:
-        printf ("%d: Elf %d: taking holidays\n", (*number)++, elveid);
+        fprintf (file, "%d: Elf %d: taking holidays\n", (*number)++, elveid);
         break;
     }
     fflush(file);
@@ -270,13 +270,13 @@ void reindeer_message(int message, int reindeerid)
     switch (message)
     {
     case RSTARTED:
-        printf ("%d: RD %d: rstarted \n", (*number)++, reindeerid);
+        fprintf (file, "%d: RD %d: rstarted \n", (*number)++, reindeerid);
         break;
     case RETURN:
-        printf ("%d: RD %d: return home\n", (*number)++, reindeerid);
+        fprintf (file, "%d: RD %d: return home\n", (*number)++, reindeerid);
         break;
     case GET_HELP:
-        printf ("%d: RD %d: get hitched\n", (*number)++, reindeerid);
+        fprintf (file, "%d: RD %d: get hitched\n", (*number)++, reindeerid);
         break;
     }
     fflush(file);
@@ -293,8 +293,8 @@ void proc_santa(int NR, int NE)
         sem_wait(santa);
         if ((*r_back) == NR)
         {
-            *work_closed = 1;
             santa_message(CLOSING);
+            *work_closed = 1;
             for(int i = 0; i < NE; i++) { sem_post (elves); }; // všechny elfy z fronty pošle na prázdniny
             for (int i = 0; i < NR; i++) { sem_post(reindeers); } //pustí všechny soby do fáze zapřáhnutí
             sem_wait(reindeers_hitched); //čeká se, než zapřáhne všechny soby

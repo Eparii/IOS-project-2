@@ -45,7 +45,7 @@
 #define TR_MIN 0
 
 int *number = NULL, *e_waiting = NULL, *r_hitched = NULL, *e_helped = NULL, *r_back = NULL, *work_closed = NULL;
-sem_t *santa = NULL, *elves = NULL, *reindeers = NULL, *writing = NULL, *santa_helped = NULL, *reindeers_hitched = NULL, *elves_inc = NULL;
+sem_t *santa = NULL, *elves = NULL, *reindeers = NULL, *writing = NULL, *santa_helped = NULL, *reindeers_hitched = NULL;
 FILE *file;
 
 //struktura na uložení parametrů
@@ -67,8 +67,6 @@ void clean()
     sem_unlink("xtetau00_sem_writing");
     sem_unlink("xtetau00_sem_santa_helped");
     sem_unlink("xtetau00_sem_reindeers_hitched");
-    sem_unlink("xtetau00_sem_elves_inc");
-    sem_destroy(elves_inc);
     sem_destroy(reindeers_hitched);
     sem_destroy(santa_helped);
     sem_destroy(writing);
@@ -209,8 +207,7 @@ int init_semaphores()
     writing = sem_open("xtetau00_sem_writing", O_CREAT | O_EXCL, 0666, 1);
     santa_helped = sem_open("xtetau00_sem_santa_helped", O_CREAT | O_EXCL, 0666, 0);
     reindeers_hitched = sem_open("xtetau00_sem_reindeers_hitched", O_CREAT | O_EXCL, 0666, 0);
-    elves_inc = sem_open("xtetau00_sem_elves_inc", O_CREAT | O_EXCL, 0666, 1);
-    if (santa == SEM_FAILED || elves == SEM_FAILED || reindeers == SEM_FAILED || writing == SEM_FAILED || santa_helped == SEM_FAILED || reindeers_hitched == SEM_FAILED || elves_inc == SEM_FAILED)
+    if (santa == SEM_FAILED || elves == SEM_FAILED || reindeers == SEM_FAILED || writing == SEM_FAILED || santa_helped == SEM_FAILED || reindeers_hitched == SEM_FAILED)
     {
         return -1;
     }
@@ -329,7 +326,6 @@ void proc_elves(int NE, int TE)
                     elf_message(HOLIDAYS, i+1);
                     exit(0);
                 }
-                sem_wait(elves_inc);
                 (*e_waiting)++;
                 if ((*e_waiting) >= 3) // pokud jsou ve frontě alespoň 3 elfové, probudi santu
                 {
@@ -337,7 +333,6 @@ void proc_elves(int NE, int TE)
                     *e_waiting -= 3;
 
                 }
-                sem_post(elves_inc);
                 sem_wait(elves); // elfové čekají, dokud nebudou 3, nebo nepřijde poslední sob
                 if (*work_closed == 1)
                 {

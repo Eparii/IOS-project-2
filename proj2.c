@@ -44,6 +44,7 @@
 #define TR_MAX 1000
 #define TR_MIN 0
 
+
 int *number = NULL, *e_waiting = NULL, *r_hitched = NULL, *e_helped = NULL, *r_back = NULL, *work_closed = NULL;
 sem_t *santa = NULL, *elves = NULL, *reindeers = NULL, *writing = NULL, *santa_helped = NULL, *reindeers_hitched = NULL;
 FILE *file;
@@ -79,7 +80,6 @@ void clean()
     munmap(r_hitched, sizeof(*(r_hitched)));
     munmap(r_back, sizeof(*(r_back)));
     munmap(work_closed, sizeof(*(work_closed)));
-
     if (file != NULL) { fclose (file); }
 }
 
@@ -89,29 +89,27 @@ void error_exit(int error_code)
     switch (error_code)
     {
     case PARAMS_ERR: //chyba v zadání parametrů
-        fprintf(stderr, "Wrong parameters");
+        fprintf(stderr, "Wrong parameters\n");
         exit (1);
         break;
     case FILE_ERR: //chyba v otevření nebo vyvoření souboru
-        fprintf(stderr, "Error in creating/opening file");
+        fprintf(stderr, "Error in creating/opening file\n");
         exit (1);
         break;
     case MAP_ERR: // chyba v mapování paměti
-        fprintf(stderr, "Creating shared memory failed");
+        fprintf(stderr, "Creating shared memory failed\n");
         clean();
         exit(1);
         break;
-    case FORK_ERR:
-        fprintf(stderr, "Forking process failed");
+    case FORK_ERR: // chyba ve forkování procesů
+        fprintf(stderr, "Forking process failed\n");
         clean();
         exit(1);
         break;
-    case SEM_INIT_ERR:
-        fprintf(stderr, "Semaphore initialization failed");
+    case SEM_INIT_ERR: // chyba v inicializaci semaforů
+        fprintf(stderr, "Semaphore initialization failed\n");
         clean();
         exit(1);
-        break;
-    default:
         break;
     }
 }
@@ -201,17 +199,15 @@ void open_file()
 //funkce pro inicializaci semaforů
 int init_semaphores()
 {
-    santa = sem_open("xtetau00_sem_santa", O_CREAT | O_EXCL, 0666, 0);
-    elves = sem_open("xtetau00_sem_elves", O_CREAT | O_EXCL, 0666, 0);
-    reindeers = sem_open("xtetau00_sem_reindeers", O_CREAT | O_EXCL, 0666, 0);
-    writing = sem_open("xtetau00_sem_writing", O_CREAT | O_EXCL, 0666, 1);
-    santa_helped = sem_open("xtetau00_sem_santa_helped", O_CREAT | O_EXCL, 0666, 0);
-    reindeers_hitched = sem_open("xtetau00_sem_reindeers_hitched", O_CREAT | O_EXCL, 0666, 0);
-    if (santa == SEM_FAILED || elves == SEM_FAILED || reindeers == SEM_FAILED || writing == SEM_FAILED || santa_helped == SEM_FAILED || reindeers_hitched == SEM_FAILED)
-    {
-        return -1;
-    }
-    return 0;
+    int error = 0;
+    if ((santa = sem_open("xtetau00_sem_santa", O_CREAT | O_EXCL, 0666, 0)) == SEM_FAILED) { error = -1; }
+    if ((elves = sem_open("xtetau00_sem_elves", O_CREAT | O_EXCL, 0666, 0)) == SEM_FAILED) { error = -1; }
+    if ((reindeers = sem_open("xtetau00_sem_reindeers", O_CREAT | O_EXCL, 0666, 0)) == SEM_FAILED) { error = -1; }
+    if ((writing = sem_open("xtetau00_sem_writing", O_CREAT | O_EXCL, 0666, 1)) == SEM_FAILED) { error = -1; }
+    if ((santa_helped = sem_open("xtetau00_sem_santa_helped", O_CREAT | O_EXCL, 0666, 0)) == SEM_FAILED) { error = -1; }
+    if ((reindeers_hitched = sem_open("xtetau00_sem_reindeers_hitched", O_CREAT | O_EXCL, 0666, 0)) == SEM_FAILED) { error = -1; };
+
+    return error;
 }
 
 //funkce pro zapsání zpráv santy
@@ -261,6 +257,7 @@ void elf_message(int message, int elveid)
     sem_post(writing);
 }
 
+//funkce pro vypsání zpráv sobů
 void reindeer_message(int message, int reindeerid)
 {
     sem_wait(writing);
@@ -416,7 +413,7 @@ int main(int argc, char* argv[])
             {
                 proc_reindeers(params.NR, params.TR); // začně vykonávat NR procesů skřítků
             }
-            else if (id == -1) { error_exit (FORK_ERR); }
+            else if (id3 == -1) { error_exit (FORK_ERR); }
         }
         while (wait (NULL)) // čeká na ukončení všech child procesů
         {

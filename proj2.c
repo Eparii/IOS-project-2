@@ -46,7 +46,7 @@
 
 
 int *number = NULL, *e_waiting = NULL, *r_hitched = NULL, *e_helped = NULL, *r_back = NULL, *work_closed = NULL;
-sem_t *santa = NULL, *elves = NULL, *reindeers = NULL, *writing = NULL, *santa_helped = NULL, *reindeers_hitched = NULL;
+sem_t *santa = NULL, *elves = NULL, *reindeers = NULL, *writing = NULL, *santa_helped = NULL, *reindeers_hitched = NULL, *elves_mutex = NULL;
 FILE *file;
 
 //struktura na uložení parametrů
@@ -68,6 +68,8 @@ void clean()
     sem_unlink("xtetau00_sem_writing");
     sem_unlink("xtetau00_sem_santa_helped");
     sem_unlink("xtetau00_sem_reindeers_hitched");
+    sem_unlink("xtetau00_sem_elves_mutex");
+    sem_destroy(elves_mutex);
     sem_destroy(reindeers_hitched);
     sem_destroy(santa_helped);
     sem_destroy(writing);
@@ -206,7 +208,7 @@ int init_semaphores()
     if ((writing = sem_open("xtetau00_sem_writing", O_CREAT | O_EXCL, 0666, 1)) == SEM_FAILED) { error = -1; }
     if ((santa_helped = sem_open("xtetau00_sem_santa_helped", O_CREAT | O_EXCL, 0666, 0)) == SEM_FAILED) { error = -1; }
     if ((reindeers_hitched = sem_open("xtetau00_sem_reindeers_hitched", O_CREAT | O_EXCL, 0666, 0)) == SEM_FAILED) { error = -1; };
-
+    if ((elves_mutex = sem_open("xtetau00_sem_elves_mutex", O_CREAT | O_EXCL, 0666, 1)) == SEM_FAILED) { error = -1; };
     return error;
 }
 
@@ -323,6 +325,7 @@ void proc_elves(int NE, int TE)
                     elf_message(HOLIDAYS, i+1);
                     exit(0);
                 }
+		sem_wait(elves_mutex);
                 (*e_waiting)++;
                 if ((*e_waiting) >= 3) // pokud jsou ve frontě alespoň 3 elfové, probudi santu
                 {
@@ -330,19 +333,23 @@ void proc_elves(int NE, int TE)
                     *e_waiting -= 3;
 
                 }
-                sem_wait(elves); // elfové čekají, dokud nebudou 3, nebo nepřijde poslední sob
+		sem_post(elves_mutex);
+		sem_wait(elves); // elfové čekají, dokud nebudou 3, nebo nepřijde poslední sob
                 if (*work_closed == 1)
                 {
                     elf_message(HOLIDAYS, i+1);
                     exit(0);
                 }
                 elf_message(GET_HELP, i + 1); 
+		sem_wait(elves_mutex);
                 (*e_helped)++;
+		sem_post(elves_mutex);
                 if (*e_helped == 3)
                 {
                     *e_helped = 0;
                     sem_post(santa_helped); // po pomoci všem 3 elfům v dílně jde santa spát (další smyčka cyklu)
-                }
+                fprintf(file, "posted santa\n");
+		}
             }   
         }
         else if (id == -1) { error_exit (FORK_ERR); }
@@ -420,6 +427,7 @@ int main(int argc, char* argv[])
             if (errno == ECHILD) {break;}
         }
         clean(); // uvolní sdílenou paměť, semafory a soubor  
+	fprintf (file, "ENDING MAIN PROCESS");
         exit (0);
     }
 }
